@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const BASE = import.meta.env.VITE_API_URL || '';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: `${BASE}/api`,
   timeout: 120000,
 });
 
@@ -28,11 +30,11 @@ async function uploadSingleFile(url, fieldName, file) {
 
 export const photosApi = {
   /** Upload one photo/video file. Returns the saved photo object. */
-  upload: (file) => uploadSingleFile('/api/photos/upload', 'file', file),
+  upload: (file) => uploadSingleFile(`${BASE}/api/photos/upload`, 'file', file),
   getAll: (params = {}) => api.get('/photos', { params }),
   getCategories: () => api.get('/photos/categories'),
   getOne: id => api.get(`/photos/${id}`),
-  fileUrl: id => `/api/photos/${id}/file`,
+  fileUrl: id => `${BASE}/api/photos/${id}/file`,
   update: (id, data) => api.patch(`/photos/${id}`, data),
   delete: id => api.delete(`/photos/${id}`),
 };
@@ -52,8 +54,8 @@ export const pinsApi = {
 export const musicApi = {
   getAll: () => api.get('/music'),
   /** Upload one music file. Returns the saved music object. */
-  upload: (file) => uploadSingleFile('/api/music/upload', 'file', file),
-  fileUrl: id => `/api/music/${id}/file`,
+  upload: (file) => uploadSingleFile(`${BASE}/api/music/upload`, 'file', file),
+  fileUrl: id => `${BASE}/api/music/${id}/file`,
   delete: id => api.delete(`/music/${id}`),
 };
 
