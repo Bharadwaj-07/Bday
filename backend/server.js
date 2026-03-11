@@ -19,11 +19,26 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
+// ─── Allowed Origins ──────────────────────────────────────────────────────────
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:4173',
+  ...(process.env.CLIENT_URL
+    ? [process.env.CLIENT_URL,
+       process.env.CLIENT_URL.replace(/^https?:\/\//, 'https://'),
+       process.env.CLIENT_URL.replace(/^https?:\/\//, 'http://')]
+    : []),
+];
+
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 io.on('connection', socket => {
@@ -36,7 +51,10 @@ app.set('io', io);
 // ─── Security & Middleware ─────────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
 }));
