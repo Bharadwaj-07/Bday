@@ -24,11 +24,10 @@ export default function GPSPickerMap({ onPick, initialLat, initialLng, pins = []
       zoomControl: true,
     });
 
-    L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_3mfq_1_65543acab50b1f5a16e055d4', {
-      attribution: '© OpenStreetMap © CARTO',
-      subdomains: 'abcd',
-      maxZoom: 20,
-    }).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_3mfq_1_65543acab50b1f5a16e055d4', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: 'abcd', maxZoom: 20
+}).addTo(map);
 
     // ── Render existing pins ──────────────────────────────────────────────────
     pins.forEach(pin => {
