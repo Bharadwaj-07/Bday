@@ -1,15 +1,46 @@
 import axios from 'axios';
 
-const BASE = import.meta.env.VITE_API_URL || '';
+const BASE = (import.meta.env.VITE_API_URL || window.location.origin || '').replace(/\/$/, '');
+const AUTH_TOKEN_KEY = 'photomap_auth_token';
+
+export function getStoredToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY) || '';
+}
+
+export function setStoredToken(token) {
+  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+  else localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+export function clearStoredToken() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
 
 const api = axios.create({
   baseURL: `${BASE}/api`,
   timeout: 120000,
 });
 
+if (!import.meta.env.VITE_API_URL && BASE === window.location.origin) {
+  console.info('PhotoMap is using the current Netlify/Vite origin as the API base. Set VITE_API_URL for a separate backend host.');
+}
+
+api.interceptors.request.use((config) => {
+  const token = getStoredToken();
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   res => res,
   error => {
+    if (error.response?.status === 401) {
+      clearStoredToken();
+      window.dispatchEvent(new CustomEvent('photomap:logout'));
+    }
     const message = error.response?.data?.error || error.message || 'Unknown error';
     return Promise.reject(new Error(message));
   }
@@ -27,6 +58,11 @@ async function uploadSingleFile(url, fieldName, file) {
   if (!res.ok) throw new Error(json.error || `Upload failed (${res.status})`);
   return json;
 }
+
+export const authApi = {
+  googleLogin: (idToken) => api.post('/auth/google', { idToken }),
+  getMe: () => api.get('/auth/me'),
+};
 
 export const photosApi = {
   /** Upload one photo/video file. Returns the saved photo object. */

@@ -1,13 +1,19 @@
 const express = require('express');
 const Photo = require('../models/Photo');
 const { getStorageUsage } = require('../utils/storage');
+const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
+
+router.use(requireAuth);
 
 // GET /api/stats – aggregated map statistics
 router.get('/', async (req, res) => {
   try {
+    const ownerId = req.user.sub;
+    const filter = { ownerId };
     const [totals, byType, bySource, recentUploads] = await Promise.all([
       Photo.aggregate([
+        { $match: filter },
         {
           $group: {
             _id: null,
@@ -20,12 +26,14 @@ router.get('/', async (req, res) => {
         },
       ]),
       Photo.aggregate([
+        { $match: filter },
         { $group: { _id: '$mediaType', count: { $sum: 1 } } },
       ]),
       Photo.aggregate([
+        { $match: filter },
         { $group: { _id: '$locationSource', count: { $sum: 1 } } },
       ]),
-      Photo.find()
+      Photo.find(filter)
         .select('originalName mediaType locationSource createdAt')
         .sort({ createdAt: -1 })
         .limit(5)

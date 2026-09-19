@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { photosApi, musicApi } from '../services/api';
 
+const normalizeId = (value) => value && typeof value === 'object' && value.toString ? value.toString() : String(value ?? '');
+
 // ── Haversine distance in km ────────────────────────────────────────────────
 function haversine(lat1, lng1, lat2, lng2) {
   const R = 6371;
@@ -21,25 +23,6 @@ function haversine(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ── Build nearest-neighbor ordered list of pins ─────────────────────────────
-function buildNearestRoute(pins, startPin) {
-  if (!pins.length || !startPin) return [startPin].filter(Boolean);
-  const remaining = pins.filter(p => p._id !== startPin._id);
-  const route = [startPin];
-  let current = startPin;
-  while (remaining.length) {
-    let nearest = 0;
-    let minDist = Infinity;
-    for (let i = 0; i < remaining.length; i++) {
-      const d = haversine(current.lat, current.lng, remaining[i].lat, remaining[i].lng);
-      if (d < minDist) { minDist = d; nearest = i; }
-    }
-    current = remaining.splice(nearest, 1)[0];
-    route.push(current);
-  }
-  return route;
-}
-
 // ── Format seconds to mm:ss ─────────────────────────────────────────────────
 function formatTime(sec) {
   if (!sec || isNaN(sec)) return '0:00';
@@ -51,13 +34,13 @@ function formatTime(sec) {
 // ════════════════════════════════════════════════════════════════════════════════
 // ALBUM PAGE — Full-screen immersive album for a pin
 // ════════════════════════════════════════════════════════════════════════════════
-export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
+export default function AlbumPage({ pin, allPins, onClose, onNavigatePin, autoAdvanceToNext, onAutoAdvance }) {
   // ── Media state ───────────────────────────────────────────────────────────
   const [mediaItems, setMediaItems] = useState([]);     // full photo/video docs
   const [musicItems, setMusicItems] = useState([]);     // { _id, originalName }
   const [loadingMedia, setLoadingMedia] = useState(true);
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [slideshowActive, setSlideshowActive] = useState(false);
+  const [slideshowActive, setSlideshowActive] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const slideshowTimerRef = useRef(null);
   const containerRef = useRef(null);
@@ -72,49 +55,67 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
   const [audioLoop, setAudioLoop] = useState(true);
   const audioRef = useRef(null);
 
-  // ── Pin route (nearest-distance ordered) ──────────────────────────────────
-  const route = useMemo(() => buildNearestRoute(allPins, pin), [allPins, pin]);
-  const routeIdx = useMemo(() => route.findIndex(p => p._id === pin._id), [route, pin]);
+  // ── Pin route (global cycle across all available pins) ─────────────────────
+  const route = useMemo(() => allPins || [], [allPins]);
+  const routeIdx = useMemo(() => {
+    if (!route.length) return 0;
+    const found = route.findIndex(p => p._id === pin._id);
+    return found >= 0 ? found : 0;
+  }, [route, pin]);
 
-  const hasPrevPin = routeIdx > 0;
-  const hasNextPin = routeIdx < route.length - 1;
+  const hasPrevPin = route.length > 1;
+  const hasNextPin = route.length > 1;
 
   const goPrevPin = useCallback(() => {
-    if (hasPrevPin) onNavigatePin(route[routeIdx - 1]);
-  }, [hasPrevPin, route, routeIdx, onNavigatePin]);
+    if (!route.length) return;
+    const nextIdx = (routeIdx - 1 + route.length) % route.length;
+    onNavigatePin(route[nextIdx]);
+  }, [route, routeIdx, onNavigatePin]);
 
   const goNextPin = useCallback(() => {
-    if (hasNextPin) onNavigatePin(route[routeIdx + 1]);
-  }, [hasNextPin, route, routeIdx, onNavigatePin]);
+    if (!route.length) return;
+    const nextIdx = (routeIdx + 1) % route.length;
+    onNavigatePin(route[nextIdx]);
+  }, [route, routeIdx, onNavigatePin]);
 
   // ── Load linked media & music ─────────────────────────────────────────────
   useEffect(() => {
     if (!pin) return;
     setLoadingMedia(true);
     setCurrentIdx(0);
-    setSlideshowActive(false);
+    setSlideshowActive(Boolean(pin.photoIds?.length > 1));
 
     const loadMedia = async () => {
-      if (!pin.photoIds?.length) { setMediaItems([]); setLoadingMedia(false); return; }
+      const linkedPhotoIds = Array.isArray(pin.photoIds) ? pin.photoIds : Array.isArray(pin.photos) ? pin.photos : [];
+      if (!linkedPhotoIds.length) {
+        setMediaItems([]);
+        setLoadingMedia(false);
+        return;
+      }
       const results = await Promise.all(
-        pin.photoIds.map(id => photosApi.getOne(id).then(r => r.data).catch(() => null))
+        linkedPhotoIds.map(id => photosApi.getOne(id).then(r => r.data).catch(() => null))
       );
-      setMediaItems(results.filter(Boolean));
+      const validResults = results.filter(Boolean);
+      setMediaItems(validResults);
+      setCurrentIdx(0);
+      setSlideshowActive(validResults.length > 1);
       setLoadingMedia(false);
     };
 
     const loadMusic = async () => {
-      if (!pin.musicIds?.length) { setMusicItems([]); return; }
-      // Build list — we can fetch names from the music API
+      const linkedMusicIds = Array.isArray(pin.musicIds) ? pin.musicIds : Array.isArray(pin.music) ? pin.music : [];
+      const selectedMusicIds = linkedMusicIds.slice(0, 1);
+      if (!selectedMusicIds.length) { setMusicItems([]); return; }
       try {
         const { data } = await musicApi.getAll();
         const allMusic = data.music || [];
-        const linked = pin.musicIds
-          .map(id => allMusic.find(m => m._id === id))
+        const musicLookup = new Map(allMusic.map(item => [normalizeId(item._id), item]));
+        const linked = selectedMusicIds
+          .map(id => musicLookup.get(normalizeId(id)))
           .filter(Boolean);
-        setMusicItems(linked);
+        setMusicItems(linked.length ? linked : selectedMusicIds.map(id => ({ _id: id, originalName: 'Track' })));
       } catch {
-        setMusicItems(pin.musicIds.map(id => ({ _id: id, originalName: 'Track' })));
+        setMusicItems(selectedMusicIds.map(id => ({ _id: id, originalName: 'Track' })));
       }
     };
 
@@ -124,11 +125,17 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
 
   // ── Auto-start music when page opens ──────────────────────────────────────
   useEffect(() => {
-    if (musicItems.length > 0 && !audioPlaying) {
+    if (musicItems.length === 0) {
+      setAudioPlaying(false);
+      return;
+    }
+    if (slideshowActive) {
       setCurrentTrack(0);
       setAudioPlaying(true);
+    } else {
+      setAudioPlaying(false);
     }
-  }, [musicItems]);
+  }, [musicItems, slideshowActive]);
 
   // ── Audio playback ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -136,6 +143,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
     if (!audio || !musicItems.length) return;
     audio.src = musicApi.fileUrl(musicItems[currentTrack]?._id);
     audio.muted = audioMuted;
+    audio.loop = true;
     if (audioPlaying) audio.play().catch(() => {});
   }, [currentTrack, musicItems]);
 
@@ -181,10 +189,14 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
   }, [audioDuration]);
 
   // ── Current media item ────────────────────────────────────────────────────
-  const currentMedia = mediaItems[currentIdx] || null;
+  const safeCurrentIdx = mediaItems.length
+    ? ((currentIdx % mediaItems.length) + mediaItems.length) % mediaItems.length
+    : 0;
+  const currentMedia = mediaItems[safeCurrentIdx] || null;
   const isVideo = currentMedia?.mediaType === 'video' ||
                   currentMedia?.mimeType?.startsWith('video/');
-  const mediaUrl = currentMedia ? photosApi.fileUrl(currentMedia._id) : null;
+  const mediaUrl = currentMedia && currentMedia._id ? photosApi.fileUrl(currentMedia._id) : null;
+  const hasRenderableMedia = !!currentMedia && !!mediaUrl;
 
   // ── Slideshow timer ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -192,20 +204,34 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
     if (!slideshowActive || mediaItems.length <= 1) return;
 
     slideshowTimerRef.current = setInterval(() => {
-      // Don't advance if the current item is a video (let video finish)
       if (isVideo && videoRef.current && !videoRef.current.ended) return;
+
+      if (currentIdx >= mediaItems.length - 1) {
+        const nextPin = route[(routeIdx + 1) % route.length];
+        if (route.length > 1 && onNavigatePin) {
+          onNavigatePin(nextPin);
+        }
+        return;
+      }
+
       setCurrentIdx(i => (i + 1) % mediaItems.length);
-    }, 5000);
+    }, 1500);
 
     return () => clearInterval(slideshowTimerRef.current);
-  }, [slideshowActive, mediaItems.length, isVideo]);
+  }, [slideshowActive, mediaItems.length, isVideo, currentIdx, route, routeIdx, onNavigatePin]);
 
   // When a video ends during slideshow, advance
   const handleVideoEnded = useCallback(() => {
-    if (slideshowActive && mediaItems.length > 1) {
-      setCurrentIdx(i => (i + 1) % mediaItems.length);
+    if (!slideshowActive || mediaItems.length <= 1) return;
+    if (currentIdx >= mediaItems.length - 1) {
+      const nextPin = route[(routeIdx + 1) % route.length];
+      if (route.length > 1 && onNavigatePin) {
+        onNavigatePin(nextPin);
+      }
+      return;
     }
-  }, [slideshowActive, mediaItems.length]);
+    setCurrentIdx(i => (i + 1) % mediaItems.length);
+  }, [slideshowActive, mediaItems.length, currentIdx, route, routeIdx, onNavigatePin]);
 
   // Auto-play videos when they become current
   useEffect(() => {
@@ -257,12 +283,6 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
   if (!pin) return null;
 
   const pinColor = pin.color || '#6366f1';
-  const distToNext = hasNextPin
-    ? haversine(pin.lat, pin.lng, route[routeIdx + 1].lat, route[routeIdx + 1].lng).toFixed(1)
-    : null;
-  const distToPrev = hasPrevPin
-    ? haversine(pin.lat, pin.lng, route[routeIdx - 1].lat, route[routeIdx - 1].lng).toFixed(1)
-    : null;
 
   return (
     <motion.div
@@ -346,12 +366,11 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
                        flex flex-col items-center justify-center gap-1
                        text-white/20 hover:text-white/70 transition-all group"
             style={{ background: 'linear-gradient(90deg, rgba(7,8,12,0.8) 0%, transparent 100%)' }}
-            title={`Previous: ${route[routeIdx - 1]?.name} (${distToPrev} km)`}>
+            title={`Previous: ${route[routeIdx - 1]?.name}`}>
             <ChevronLeft size={28} className="group-hover:-translate-x-1 transition-transform" />
             <span className="text-[9px] font-medium opacity-0 group-hover:opacity-100 transition-opacity writing-mode-vertical">
               {route[routeIdx - 1]?.name}
             </span>
-            <span className="text-[8px] opacity-0 group-hover:opacity-70 transition-opacity">{distToPrev}km</span>
           </button>
         )}
 
@@ -362,12 +381,11 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
                        flex flex-col items-center justify-center gap-1
                        text-white/20 hover:text-white/70 transition-all group"
             style={{ background: 'linear-gradient(-90deg, rgba(7,8,12,0.8) 0%, transparent 100%)' }}
-            title={`Next: ${route[routeIdx + 1]?.name} (${distToNext} km)`}>
+            title={`Next: ${route[routeIdx + 1]?.name}`}>
             <ChevronRight size={28} className="group-hover:translate-x-1 transition-transform" />
             <span className="text-[9px] font-medium opacity-0 group-hover:opacity-100 transition-opacity writing-mode-vertical">
               {route[routeIdx + 1]?.name}
             </span>
-            <span className="text-[8px] opacity-0 group-hover:opacity-70 transition-opacity">{distToNext}km</span>
           </button>
         )}
 
@@ -379,7 +397,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
               <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-accent animate-spin" />
               <p className="text-sm text-white/30">Loading album…</p>
             </div>
-          ) : mediaItems.length === 0 ? (
+          ) : !hasRenderableMedia ? (
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="w-24 h-24 rounded-3xl flex items-center justify-center"
                 style={{ background: `${pinColor}15`, border: `2px solid ${pinColor}25` }}>
@@ -401,7 +419,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
               {/* Media display */}
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={currentMedia?._id || currentIdx}
+                  key={currentMedia?._id || safeCurrentIdx}
                   className="relative z-10 flex items-center justify-center w-full h-full"
                   initial={{ opacity: 0, scale: 0.97 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -439,7 +457,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
                     {currentMedia.title || currentMedia.originalName}
                   </span>
                   <span className="text-[10px] text-white/30">
-                    {currentIdx + 1} / {mediaItems.length}
+                    {safeCurrentIdx + 1} / {mediaItems.length}
                   </span>
                   {isVideo && (
                     <span className="text-[9px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
@@ -498,7 +516,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
                 return (
                   <button key={item._id} onClick={() => setCurrentIdx(i)}
                     className={`shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all relative ${
-                      i === currentIdx
+                      i === safeCurrentIdx
                         ? 'border-white/70 ring-1 ring-accent/40 scale-105'
                         : 'border-transparent opacity-40 hover:opacity-70'
                     }`}>
@@ -597,29 +615,50 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin }) {
         )}
 
         {/* Pin route bar */}
-        <div className="flex items-center justify-between px-5 py-2 border-t border-white/[0.04]">
+        <div className="flex items-center justify-between px-5 py-2 border-t border-white/[0.04] gap-3">
           <div className="flex items-center gap-2">
             <Navigation size={12} className="text-white/25" />
             <span className="text-[10px] text-white/30 font-medium">
               Stop {routeIdx + 1} of {route.length}
             </span>
           </div>
-          {/* Mini route dots */}
-          <div className="flex items-center gap-1">
-            {route.map((p, i) => (
-              <button
-                key={p._id}
-                onClick={() => onNavigatePin(p)}
-                className={`rounded-full transition-all ${
-                  i === routeIdx
-                    ? 'w-5 h-2 bg-white/60'
-                    : 'w-2 h-2 bg-white/15 hover:bg-white/30'
-                }`}
-                title={p.name}
-                style={i === routeIdx ? { background: pinColor } : undefined}
-              />
-            ))}
+
+          <div className="flex items-center gap-2 flex-1 justify-center">
+            <button
+              onClick={goPrevPin}
+              disabled={!hasPrevPin}
+              className="p-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Previous pin"
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {route.map((p, i) => (
+                <button
+                  key={p._id}
+                  onClick={() => onNavigatePin(p)}
+                  className={`rounded-full transition-all ${
+                    i === routeIdx
+                      ? 'w-5 h-2 bg-white/60'
+                      : 'w-2 h-2 bg-white/15 hover:bg-white/30'
+                  }`}
+                  title={p.name}
+                  style={i === routeIdx ? { background: pinColor } : undefined}
+                />
+              ))}
+            </div>
+
+            <button
+              onClick={goNextPin}
+              disabled={!hasNextPin}
+              className="p-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Next pin"
+            >
+              <ChevronRight size={14} />
+            </button>
           </div>
+
           <div className="flex items-center gap-3 text-[10px] text-white/25">
             <span>← → media</span>
             <span>↑ ↓ pins</span>

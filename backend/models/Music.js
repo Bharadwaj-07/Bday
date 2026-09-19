@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const musicSchema = new mongoose.Schema({
+  ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   originalName: { type: String, required: true },
   mimeType:     { type: String, default: 'audio/mpeg' },
   size:         { type: Number },
@@ -12,6 +13,6 @@ const musicSchema = new mongoose.Schema({
   toObject: { virtuals: true },
 });
 
-musicSchema.index({ createdAt: -1 });
+musicSchema.index({ ownerId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Music', musicSchema);

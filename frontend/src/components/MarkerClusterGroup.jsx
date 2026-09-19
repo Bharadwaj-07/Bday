@@ -8,7 +8,7 @@ import L from 'leaflet';
 import 'leaflet.markercluster';
 import { createPinIcon } from './PhotoMarker';
 
-export default function MarkerClusterGroup({ pins, onPinClick }) {
+export default function MarkerClusterGroup({ pins, onPinClick, activePinId }) {
   const map = useMap();
   const clusterRef = useRef(null);
   const markersRef = useRef(new Map()); // pinId -> L.Marker
@@ -65,20 +65,21 @@ export default function MarkerClusterGroup({ pins, onPinClick }) {
 
     // Add or update markers
     for (const pin of pins) {
+      const isActive = activePinId && pin._id === activePinId;
       if (markersRef.current.has(pin._id)) {
         const marker = markersRef.current.get(pin._id);
         marker.setLatLng([pin.lat, pin.lng]);
-        marker.setIcon(createPinIcon(pin));
+        marker.setIcon(createPinIcon(pin, isActive));
         marker.off('click');
         marker.on('click', () => onPinClick(pin));
       } else {
-        const marker = L.marker([pin.lat, pin.lng], { icon: createPinIcon(pin) });
+        const marker = L.marker([pin.lat, pin.lng], { icon: createPinIcon(pin, isActive) });
         marker.on('click', () => onPinClick(pin));
         cluster.addLayer(marker);
         markersRef.current.set(pin._id, marker);
       }
     }
-  }, [pins, onPinClick]);
+  }, [pins, onPinClick, activePinId]);
 
   return null;
 }

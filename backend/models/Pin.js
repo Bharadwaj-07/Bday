@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const pinSchema = new mongoose.Schema({
+  ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   name:        { type: String, required: true, trim: true, maxlength: 200 },
   description: { type: String, trim: true, maxlength: 2000 },
   color:       { type: String, default: '#6366f1' },
@@ -20,6 +21,6 @@ const pinSchema = new mongoose.Schema({
 });
 
 pinSchema.index({ location: '2dsphere' });
-pinSchema.index({ createdAt: -1 });
+pinSchema.index({ ownerId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Pin', pinSchema);

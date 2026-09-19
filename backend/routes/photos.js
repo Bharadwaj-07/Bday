@@ -7,8 +7,11 @@ const { extractMetadata } = require('../utils/extractGPS');
 const { compressImage } = require('../utils/compress');
 const { checkStorageLimit } = require('../utils/storage');
 const Photo = require('../models/Photo');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
+
+router.use(requireAuth);
 
 let bucket;
 function getBucket() {
@@ -76,6 +79,7 @@ router.post('/upload', (req, res, next) => {
   });
 }, async (req, res) => {
   try {
+    const ownerId = req.user.sub;
     if (!req.file) return res.status(400).json({ error: 'No file provided.' });
 
     const file = req.file;
@@ -105,6 +109,7 @@ router.post('/upload', (req, res, next) => {
     const gridfsId = await storeBuffer(compressedBuf, file.originalname, compressedMime, { uploadedAt: new Date() });
     const locationData = gps ? { type: 'Point', coordinates: [gps.lng, gps.lat] } : undefined;
     const photo = await Photo.create({
+      ownerId,
       filename: Date.now() + '_' + file.originalname,
       originalName: file.originalname,
       mimeType: compressedMime,
@@ -139,8 +144,9 @@ router.post('/upload', (req, res, next) => {
 // GET /api/photos
 router.get('/', async (req, res) => {
   try {
+    const ownerId = req.user.sub;
     const { withLocation, mediaType, tags, categories, page = 1, limit = 200 } = req.query;
-    const filter = {};
+    const filter = { ownerId };
     if (withLocation === 'true')  filter.locationSource = { $ne: 'none' };
     if (withLocation === 'false') filter.locationSource = 'none';
     if (mediaType) filter.mediaType = mediaType;
@@ -158,7 +164,8 @@ router.get('/', async (req, res) => {
 // GET /api/photos/categories – all distinct category names
 router.get('/categories', async (req, res) => {
   try {
-    const cats = await Photo.distinct('categories');
+    const ownerId = req.user.sub;
+    const cats = await Photo.distinct('categories', { ownerId });
     res.json({ categories: cats.sort() });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -166,7 +173,8 @@ router.get('/categories', async (req, res) => {
 // GET /api/photos/map  – grouped pins (one per unique location)
 router.get('/map', async (req, res) => {
   try {
-    const photos = await Photo.find({ locationSource: { $ne: 'none' } })
+    const ownerId = req.user.sub;
+    const photos = await Photo.find({ ownerId, locationSource: { $ne: 'none' } })
       .select('location locationSource locationLabel mediaType title exif.dateTaken createdAt songs')
       .lean();
 
@@ -209,12 +217,13 @@ router.get('/map', async (req, res) => {
 // GET /api/photos/by-location?lat=X&lng=Y  – all photos at a grouped location
 router.get('/by-location', async (req, res) => {
   try {
+    const ownerId = req.user.sub;
     const { lat, lng } = req.query;
     if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required.' });
     const rLat = Math.round(parseFloat(lat) * 1e5) / 1e5;
     const rLng = Math.round(parseFloat(lng) * 1e5) / 1e5;
 
-    const photos = await Photo.find({ locationSource: { $ne: 'none' } })
+    const photos = await Photo.find({ ownerId, locationSource: { $ne: 'none' } })
       .select('-gridfsId -thumbnailId -__v')
       .sort({ createdAt: -1 })
       .lean();
@@ -242,8 +251,9 @@ router.get('/by-location', async (req, res) => {
 // GET /api/photos/:id
 router.get('/:id', async (req, res) => {
   try {
-    const photo = await Photo.findById(req.params.id).select('-__v -gridfsId -thumbnailId').lean();
-    if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+    const ownerId = req.user.sub;
+    const photo = await Photo.findOne({ _id: req.params.id, ownerId }).select('-__v -gridfsId -thumbnailId').lean();
+    if (!photo) return res.status(404).json({ error: 'Photo not found or not owned by this user.' });
     // Strip song gridfsIds from response
     const p = { ...photo, lat: photo.location?.coordinates?.[1] ?? null, lng: photo.location?.coordinates?.[0] ?? null };
     if (p.songs) p.songs = p.songs.map(s => ({ _id: s._id, originalName: s.originalName, mimeType: s.mimeType, size: s.size, addedAt: s.addedAt }));
@@ -254,8 +264,9 @@ router.get('/:id', async (req, res) => {
 // GET /api/photos/:id/file
 router.get('/:id/file', async (req, res) => {
   try {
-    const photo = await Photo.findById(req.params.id).select('gridfsId mimeType originalName').lean();
-    if (!photo?.gridfsId) return res.status(404).json({ error: 'File not found.' });
+    const ownerId = req.user.sub;
+    const photo = await Photo.findOne({ _id: req.params.id, ownerId }).select('gridfsId mimeType originalName').lean();
+    if (!photo?.gridfsId) return res.status(404).json({ error: 'File not found or not owned by this user.' });
     const b = getBucket();
     const fileId = new mongoose.Types.ObjectId(photo.gridfsId);
     const files = await b.find({ _id: fileId }).toArray();
@@ -282,13 +293,14 @@ router.get('/:id/file', async (req, res) => {
 // PATCH /api/photos/:id/location
 router.patch('/:id/location', async (req, res) => {
   try {
+    const ownerId = req.user.sub;
     const { lat, lng, label } = req.body;
     if (typeof lat !== 'number' || typeof lng !== 'number') return res.status(400).json({ error: 'lat and lng required as numbers.' });
     if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ error: 'Invalid coordinates.' });
     const upd = { location: { type: 'Point', coordinates: [lng, lat] }, locationSource: 'manual' };
     if (label !== undefined) upd.locationLabel = label;
-    const photo = await Photo.findByIdAndUpdate(req.params.id, upd, { new: true, runValidators: true }).select('-gridfsId -thumbnailId -__v');
-    if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+    const photo = await Photo.findOneAndUpdate({ _id: req.params.id, ownerId }, upd, { new: true, runValidators: true }).select('-gridfsId -thumbnailId -__v');
+    if (!photo) return res.status(404).json({ error: 'Photo not found or not owned by this user.' });
     const pin = pinFromPhoto(photo, lat, lng);
     emit(req, 'photo:updated', { photo: { ...photo.toJSON(), lat, lng }, pin });
     res.json(photo);
@@ -298,6 +310,7 @@ router.patch('/:id/location', async (req, res) => {
 // PATCH /api/photos/:id
 router.patch('/:id', async (req, res) => {
   try {
+    const ownerId = req.user.sub;
     const { title, description, tags, categories, locationLabel } = req.body;
     const update = {};
     if (title !== undefined)         update.title = title;
@@ -309,8 +322,8 @@ router.patch('/:id', async (req, res) => {
         : [];
     }
     if (locationLabel !== undefined) update.locationLabel = locationLabel;
-    const photo = await Photo.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true }).select('-gridfsId -thumbnailId -__v');
-    if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+    const photo = await Photo.findOneAndUpdate({ _id: req.params.id, ownerId }, update, { new: true, runValidators: true }).select('-gridfsId -thumbnailId -__v');
+    if (!photo) return res.status(404).json({ error: 'Photo not found or not owned by this user.' });
     const lat = photo.location?.coordinates?.[1] ?? null, lng = photo.location?.coordinates?.[0] ?? null;
     emit(req, 'photo:updated', { photo: { ...photo.toJSON(), lat, lng }, pin: photo.locationSource !== 'none' ? pinFromPhoto(photo, lat, lng) : null });
     res.json(photo);
@@ -320,8 +333,9 @@ router.patch('/:id', async (req, res) => {
 // DELETE /api/photos/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const photo = await Photo.findById(req.params.id);
-    if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+    const ownerId = req.user.sub;
+    const photo = await Photo.findOne({ _id: req.params.id, ownerId });
+    if (!photo) return res.status(404).json({ error: 'Photo not found or not owned by this user.' });
     const b = getBucket();
     const del = async id => { try { await b.delete(new mongoose.Types.ObjectId(id)); } catch {} };
     if (photo.gridfsId)    await del(photo.gridfsId);
@@ -336,9 +350,10 @@ router.delete('/:id', async (req, res) => {
 // POST /api/photos/:id/songs  – upload audio files
 router.post('/:id/songs', uploadAudio.array('songs', 10), async (req, res) => {
   try {
+    const ownerId = req.user.sub;
     if (!req.files?.length) return res.status(400).json({ error: 'No audio files.' });
-    const photo = await Photo.findById(req.params.id);
-    if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+    const photo = await Photo.findOne({ _id: req.params.id, ownerId });
+    if (!photo) return res.status(404).json({ error: 'Photo not found or not owned by this user.' });
     for (const file of req.files) {
       const gridfsId = await storeBuffer(file.buffer, file.originalname, file.mimetype, { photoId: photo._id });
       photo.songs.push({ originalName: file.originalname, mimeType: file.mimetype, size: file.size, gridfsId });
@@ -353,8 +368,9 @@ router.post('/:id/songs', uploadAudio.array('songs', 10), async (req, res) => {
 // GET /api/photos/:id/songs/:songId/file – stream audio
 router.get('/:id/songs/:songId/file', async (req, res) => {
   try {
-    const photo = await Photo.findById(req.params.id).select('songs').lean();
-    if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+    const ownerId = req.user.sub;
+    const photo = await Photo.findOne({ _id: req.params.id, ownerId }).select('songs').lean();
+    if (!photo) return res.status(404).json({ error: 'Photo not found or not owned by this user.' });
     const song = photo.songs.find(s => s._id.toString() === req.params.songId);
     if (!song?.gridfsId) return res.status(404).json({ error: 'Song not found.' });
     const b = getBucket();
@@ -383,8 +399,9 @@ router.get('/:id/songs/:songId/file', async (req, res) => {
 // DELETE /api/photos/:id/songs/:songId
 router.delete('/:id/songs/:songId', async (req, res) => {
   try {
-    const photo = await Photo.findById(req.params.id);
-    if (!photo) return res.status(404).json({ error: 'Photo not found.' });
+    const ownerId = req.user.sub;
+    const photo = await Photo.findOne({ _id: req.params.id, ownerId });
+    if (!photo) return res.status(404).json({ error: 'Photo not found or not owned by this user.' });
     const idx = photo.songs.findIndex(s => s._id.toString() === req.params.songId);
     if (idx === -1) return res.status(404).json({ error: 'Song not found.' });
     const song = photo.songs[idx];

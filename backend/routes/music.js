@@ -5,8 +5,11 @@ const { GridFSBucket } = require('mongodb');
 const multer = require('multer');
 const Music = require('../models/Music');
 const { checkStorageLimit } = require('../utils/storage');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
+
+router.use(requireAuth);
 
 let bucket;
 function getBucket() {
@@ -45,7 +48,8 @@ function emit(req, event, data) {
 // GET /api/music — all music
 router.get('/', async (req, res) => {
   try {
-    const music = await Music.find().sort({ createdAt: -1 }).lean();
+    const ownerId = req.user.sub;
+    const music = await Music.find({ ownerId }).sort({ createdAt: -1 }).lean();
     res.json({ music });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -61,6 +65,7 @@ router.post('/upload', (req, res, next) => {
   });
 }, async (req, res) => {
   try {
+    const ownerId = req.user.sub;
     if (!req.file) return res.status(400).json({ error: 'No audio file provided.' });
 
     const file = req.file;
@@ -76,6 +81,7 @@ router.post('/upload', (req, res, next) => {
 
     const gridfsId = await storeBuffer(file.buffer, file.originalname, file.mimetype, { uploadedAt: new Date() });
     const music = await Music.create({
+      ownerId,
       originalName: file.originalname,
       mimeType: file.mimetype,
       size: file.size,
@@ -94,8 +100,9 @@ router.post('/upload', (req, res, next) => {
 // GET /api/music/:id/file — stream audio
 router.get('/:id/file', async (req, res) => {
   try {
-    const music = await Music.findById(req.params.id).lean();
-    if (!music?.gridfsId) return res.status(404).json({ error: 'Music not found.' });
+    const ownerId = req.user.sub;
+    const music = await Music.findOne({ _id: req.params.id, ownerId }).lean();
+    if (!music?.gridfsId) return res.status(404).json({ error: 'Music not found or not owned by this user.' });
     const b = getBucket();
     const fileId = new mongoose.Types.ObjectId(music.gridfsId);
     const files = await b.find({ _id: fileId }).toArray();
@@ -122,8 +129,9 @@ router.get('/:id/file', async (req, res) => {
 // DELETE /api/music/:id
 router.delete('/:id', async (req, res) => {
   try {
-    const music = await Music.findById(req.params.id);
-    if (!music) return res.status(404).json({ error: 'Music not found.' });
+    const ownerId = req.user.sub;
+    const music = await Music.findOne({ _id: req.params.id, ownerId });
+    if (!music) return res.status(404).json({ error: 'Music not found or not owned by this user.' });
     if (music.gridfsId) {
       try { await getBucket().delete(new mongoose.Types.ObjectId(music.gridfsId)); } catch {}
     }

@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { MapPin, Music, Camera, PanelLeftClose, PanelLeftOpen, Sparkles } from 'lucide-react';
+import { MapPin, Music, Camera, PanelLeftClose, PanelLeftOpen, Sparkles, Play, Pause, SkipBack, SkipForward, LogOut, ShieldCheck } from 'lucide-react';
 import MapView from './components/MapView';
 import PinsManager from './components/PinsManager';
 import MusicManager from './components/MusicManager';
@@ -8,7 +8,7 @@ import MediaManager from './components/MediaManager';
 import AlbumPage from './components/AlbumPage';
 import { usePins, useMusic, usePhotos } from './hooks/usePhotos';
 import { useSocket } from './hooks/useSocket';
-import { pinsApi } from './services/api';
+import { pinsApi, musicApi, authApi, getStoredToken, setStoredToken, clearStoredToken } from './services/api';
 import toast from 'react-hot-toast';
 
 const TABS = [
@@ -17,10 +17,226 @@ const TABS = [
   { id: 'media', label: 'Media', icon: Camera,  color: '#06b6d4' },
 ];
 
+const normalizeId = (value) => value && typeof value === 'object' && value.toString ? value.toString() : String(value ?? '');
+
+function GoogleAuthScreen({ onAuthenticated }) {
+  const [authError, setAuthError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      setAuthError('Google login is not configured. Set VITE_GOOGLE_CLIENT_ID in the frontend environment.');
+      setIsLoading(false);
+      return;
+    }
+
+    const scriptId = 'google-identity-script';
+    const existing = document.getElementById(scriptId);
+
+    const initializeGoogle = () => {
+      if (!window.google?.accounts?.id) {
+        setAuthError('Google Identity Services failed to load.');
+        setIsLoading(false);
+        return;
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response) => {
+          try {
+            setIsLoading(true);
+            const { data } = await authApi.googleLogin(response.credential);
+            setStoredToken(data.token);
+            onAuthenticated(data.user);
+          } catch (err) {
+            setAuthError(err.message || 'Google login failed.');
+            setIsLoading(false);
+          }
+        },
+      });
+
+      window.google.accounts.id.renderButton(document.getElementById('google-signin-button'), {
+        theme: 'outline',
+        size: 'large',
+        text: 'continue_with',
+        shape: 'pill',
+      });
+
+      setIsLoading(false);
+    };
+
+    if (existing) {
+      initializeGoogle();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = initializeGoogle;
+    script.onerror = () => {
+      setAuthError('Google script failed to load.');
+      setIsLoading(false);
+    };
+    document.body.appendChild(script);
+  }, [onAuthenticated]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900/80 p-8 shadow-2xl shadow-violet-900/20 backdrop-blur">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500">
+            <Sparkles size={22} className="text-white" />
+          </div>
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] text-violet-300">PhotoMap</div>
+            <h1 className="text-2xl font-bold text-white">Sign in</h1>
+          </div>
+        </div>
+
+        <p className="mb-6 text-sm text-slate-300">
+          Continue with Google to load your pins, media, and music securely.
+        </p>
+
+        {authError ? (
+          <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {authError}
+          </div>
+        ) : null}
+
+        <div id="google-signin-button" className="flex justify-center min-h-[44px]" />
+
+        {isLoading && (
+          <div className="mt-4 text-center text-xs text-slate-400">Loading Google sign in…</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [authUser, setAuthUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  const restoreSession = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) {
+      setAuthReady(true);
+      return;
+    }
+
+    try {
+      const { data } = await authApi.getMe();
+      setAuthUser(data.user || null);
+    } catch (err) {
+      clearStoredToken();
+      setAuthUser(null);
+    } finally {
+      setAuthReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    restoreSession();
+    const onLogout = () => {
+      clearStoredToken();
+      setAuthUser(null);
+      setAuthReady(true);
+    };
+    window.addEventListener('photomap:logout', onLogout);
+    return () => window.removeEventListener('photomap:logout', onLogout);
+  }, [restoreSession]);
+
+  if (!authReady) {
+    return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">Loading…</div>;
+  }
+
+  if (!authUser) {
+    return <GoogleAuthScreen onAuthenticated={setAuthUser} />;
+  }
+
+  return <AuthenticatedApp user={authUser} onLogout={() => {
+    clearStoredToken();
+    setAuthUser(null);
+  }} />;
+}
+
+function AuthenticatedApp({ user, onLogout }) {
   const { pins, loading: pinsLoading, refetch: refetchPins } = usePins();
   const { music, refetch: refetchMusic } = useMusic();
   const { photos, refetch: refetchPhotos } = usePhotos();
+  const [isPlaybackPlaying, setIsPlaybackPlaying] = useState(false);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const [selectedPin, setSelectedPin] = useState(null); // For gorgeous popup
+  const [playbackOpenDelay, setPlaybackOpenDelay] = useState(false);
+  const audioRef = useRef(null);
+
+  const playbackPins = useMemo(() => pins || [], [pins]);
+
+  const currentPlaybackPin = playbackPins[playbackIndex % Math.max(playbackPins.length, 1)] || null;
+  const playbackMusic = useMemo(() => {
+    if (!currentPlaybackPin?.musicIds?.length) return [];
+    const linkedIds = (currentPlaybackPin.musicIds || []).slice(0, 1).map(normalizeId);
+    const ids = new Set(linkedIds);
+    return (music || []).filter(song => ids.has(normalizeId(song._id)));
+  }, [currentPlaybackPin, music]);
+
+  useEffect(() => {
+    if (!playbackPins.length) {
+      setPlaybackIndex(0);
+      return;
+    }
+    if (!selectedPin) {
+      setPlaybackIndex(0);
+      return;
+    }
+    const selectedIndex = playbackPins.findIndex(pin => pin._id === selectedPin._id);
+    if (selectedIndex >= 0) {
+      setPlaybackIndex(selectedIndex);
+    }
+  }, [selectedPin, playbackPins]);
+
+  useEffect(() => {
+    if (!playbackPins.length || !currentPlaybackPin) return;
+    setFlyToLocation({ lat: currentPlaybackPin.lat, lng: currentPlaybackPin.lng, ts: Date.now() });
+  }, [currentPlaybackPin, playbackPins.length]);
+
+  // Route playback should only move through the pin list; it should NOT open the album viewer.
+  useEffect(() => {
+    if (!isPlaybackPlaying || !playbackPins.length) return;
+    const timer = setTimeout(() => {
+      setPlaybackIndex(index => (index + 1) % playbackPins.length);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [isPlaybackPlaying, playbackIndex, playbackPins.length]);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el || !isPlaybackPlaying || !playbackMusic.length) {
+      el?.pause();
+      return;
+    }
+    const song = playbackMusic[0];
+    el.src = musicApi.fileUrl(song._id);
+    el.play().catch(() => {});
+  }, [isPlaybackPlaying, playbackMusic]);
+
+  const goPrevPlayback = useCallback(() => {
+    if (!playbackPins.length) return;
+    const nextIndex = (playbackIndex - 1 + playbackPins.length) % playbackPins.length;
+    setPlaybackIndex(nextIndex);
+    setPlaybackOpenDelay(false);
+  }, [playbackIndex, playbackPins]);
+
+  const goNextPlayback = useCallback(() => {
+    if (!playbackPins.length) return;
+    const nextIndex = (playbackIndex + 1) % playbackPins.length;
+    setPlaybackIndex(nextIndex);
+    setPlaybackOpenDelay(false);
+  }, [playbackIndex, playbackPins]);
 
   // ── Socket real-time ──────────────────────────────────────────────────────
   useSocket({
@@ -39,7 +255,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('pins');
   const [isPlacingPin, setIsPlacingPin] = useState(false);
   const [pendingPinData, setPendingPinData] = useState(null); // { name, color }
-  const [selectedPin, setSelectedPin] = useState(null); // For gorgeous popup
   const [flyToLocation, setFlyToLocation] = useState(null); // For sidebar fly-to
 
   // ── Pin placement flow ────────────────────────────────────────────────────
@@ -62,8 +277,20 @@ export default function App() {
   }, [isPlacingPin, pendingPinData, refetchPins]);
 
   const handlePinClick = useCallback((pin) => {
+    setIsPlaybackPlaying(false);
+    setPlaybackOpenDelay(false);
+    const pinIndex = playbackPins.findIndex(item => item._id === pin._id);
+    if (pinIndex >= 0) setPlaybackIndex(pinIndex);
     setSelectedPin(pin);
-  }, []);
+  }, [playbackPins]);
+
+  const handleRouteAutoAdvance = useCallback(() => {
+    if (!isPlaybackPlaying || !playbackPins.length) return;
+    const nextIndex = (playbackIndex + 1) % playbackPins.length;
+    setPlaybackIndex(nextIndex);
+    setPlaybackOpenDelay(false);
+    setSelectedPin(playbackPins[nextIndex]);
+  }, [isPlaybackPlaying, playbackIndex, playbackPins]);
 
   const handleFlyToPin = useCallback((pin) => {
     setFlyToLocation({ lat: pin.lat, lng: pin.lng, ts: Date.now() });
@@ -88,11 +315,25 @@ export default function App() {
             {pins.length} pin{pins.length !== 1 ? 's' : ''} · {photos.length} media · {music.length} song{music.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <button onClick={() => setSidebarOpen(s => !s)}
-          className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-surface-hover transition-colors"
-          title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}>
-          {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-        </button>
+
+        <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] text-emerald-200 sm:flex">
+            <ShieldCheck size={12} />
+            {user.email}
+          </div>
+          <button
+            onClick={onLogout}
+            className="inline-flex items-center gap-2 rounded-full border border-surface-border bg-surface-hover px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:text-white"
+          >
+            <LogOut size={14} />
+            Logout
+          </button>
+          <button onClick={() => setSidebarOpen(s => !s)}
+            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-surface-hover transition-colors"
+            title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}>
+            {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
+        </div>
       </header>
 
       {/* ── Main content ─────────────────────────────────────────────────────── */}
@@ -108,6 +349,51 @@ export default function App() {
               Click anywhere on the map to place "{pendingPinData?.name}"
             </div>
           )}
+
+          <div className="absolute left-4 top-4 z-[1000] flex items-center gap-2 rounded-full border border-surface-border bg-surface-card/80 px-3 py-2 shadow-lg backdrop-blur-md">
+            <button
+              onClick={goPrevPlayback}
+              disabled={!playbackPins.length}
+              className="rounded-full p-2 text-slate-300 hover:bg-surface-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              title="Previous pin"
+            >
+              <SkipBack size={16} />
+            </button>
+            <button
+              onClick={() => {
+              if (isPlaybackPlaying) {
+                setIsPlaybackPlaying(false);
+                setPlaybackOpenDelay(false);
+                return;
+              }
+              setPlaybackIndex(0);
+              setPlaybackOpenDelay(false);
+              setIsPlaybackPlaying(true);
+            }}
+              disabled={!playbackPins.length}
+              className="rounded-full bg-accent p-2.5 text-white shadow-lg hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-40"
+              title={isPlaybackPlaying ? 'Pause route' : 'Play route'}
+            >
+              {isPlaybackPlaying ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+            </button>
+            <button
+              onClick={goNextPlayback}
+              disabled={!playbackPins.length}
+              className="rounded-full p-2 text-slate-300 hover:bg-surface-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              title="Next pin"
+            >
+              <SkipForward size={16} />
+            </button>
+            <div className="ml-1 min-w-[120px] border-l border-surface-border pl-3">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Route</p>
+              <p className="text-xs text-white truncate max-w-[160px]">
+                {currentPlaybackPin ? currentPlaybackPin.name : 'No pins'}
+              </p>
+            </div>
+          </div>
+
+          <audio ref={audioRef} onEnded={() => setIsPlaybackPlaying(false)} />
+
           <MapView
             pins={pins}
             pinsLoading={pinsLoading}
@@ -115,6 +401,8 @@ export default function App() {
             onMapClick={handleMapClick}
             onPinClick={handlePinClick}
             flyToLocation={flyToLocation}
+            focusPin={selectedPin}
+            activePinId={currentPlaybackPin?._id || null}
           />
         </div>
 
@@ -194,8 +482,18 @@ export default function App() {
             key={selectedPin._id}
             pin={selectedPin}
             allPins={pins}
-            onClose={() => setSelectedPin(null)}
-            onNavigatePin={(p) => setSelectedPin(p)}
+            autoAdvanceToNext={isPlaybackPlaying}
+            onClose={() => {
+              setIsPlaybackPlaying(false);
+              setPlaybackOpenDelay(false);
+              setSelectedPin(null);
+            }}
+            onNavigatePin={(p) => {
+              setIsPlaybackPlaying(false);
+              setPlaybackOpenDelay(false);
+              setSelectedPin(p);
+            }}
+            onAutoAdvance={handleRouteAutoAdvance}
           />
         )}
       </AnimatePresence>

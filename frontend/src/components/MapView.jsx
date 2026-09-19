@@ -29,24 +29,24 @@ function FlyToHandler({ flyToLocation }) {
       prevRef.current.ts === flyToLocation.ts
     ) return;
     prevRef.current = flyToLocation;
-    map.flyTo([flyToLocation.lat, flyToLocation.lng], 14, { duration: 1.2 });
+    map.flyTo([flyToLocation.lat, flyToLocation.lng], 15, { duration: 1.4 });
   }, [flyToLocation, map]);
 
   return null;
 }
 
 // ── Main Map ──────────────────────────────────────────────────────────────────
-export default function MapView({ pins, pinsLoading, isPlacingPin, onMapClick, onPinClick, flyToLocation }) {
+export default function MapView({ pins, pinsLoading, isPlacingPin, onMapClick, onPinClick, flyToLocation, focusPin, activePinId }) {
   const mapRef = useRef(null);
 
-  // Auto-fit bounds when pins load
+  // Auto-fit bounds when pins load, unless a single pin is being focused.
   useEffect(() => {
-    if (!mapRef.current || !pins.length) return;
+    if (focusPin || !mapRef.current || !pins.length) return;
     const validPins = pins.filter(p => p.lat && p.lng);
     if (!validPins.length) return;
     const bounds = L.latLngBounds(validPins.map(p => [p.lat, p.lng]));
     mapRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 12 });
-  }, [pins]);
+  }, [pins, focusPin]);
 
   return (
     <div className="w-full h-full relative">
@@ -72,7 +72,7 @@ export default function MapView({ pins, pinsLoading, isPlacingPin, onMapClick, o
       >
         {/* ── Dark tile layer (CartoDB Dark Matter – free, no API key) ──────── */}
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          url={`https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${import.meta.env.VITE_CARTO_API_KEY}`}
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
           subdomains="abcd"
           maxZoom={20}
@@ -88,7 +88,7 @@ export default function MapView({ pins, pinsLoading, isPlacingPin, onMapClick, o
         <FlyToHandler flyToLocation={flyToLocation} />
 
         {/* ── Clustered markers (imperative) ──────────────────────────────── */}
-        <MarkerClusterGroup pins={pins} onPinClick={onPinClick} />
+        <MarkerClusterGroup pins={pins} onPinClick={onPinClick} activePinId={activePinId} />
       </MapContainer>
 
       {/* ── Map vignette overlay for depth ────────────────────────────────── */}

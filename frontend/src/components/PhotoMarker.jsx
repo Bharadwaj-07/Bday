@@ -2,19 +2,22 @@ import { Marker } from 'react-leaflet';
 import L from 'leaflet';
 
 // ── Beautiful pin icon with glow and linked-item badges ────────────────────────
-export function createPinIcon(pin) {
+export function createPinIcon(pin, isActive = false) {
   const color = pin.color || '#6366f1';
   const photoCount = pin.photoIds?.length || 0;
   const musicCount = pin.musicIds?.length || 0;
   const hasPhotos = photoCount > 0;
   const hasMusic = musicCount > 0;
   const initial = (pin.name || '?')[0].toUpperCase();
+  const size = isActive ? 60 : 48;
+  const height = isActive ? 78 : 62;
+  const innerScale = isActive ? 1.12 : 1;
 
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="62" viewBox="0 0 48 62">
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${height}" viewBox="0 0 48 62">
       <defs>
         <filter id="glow-${pin._id}" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+          <feGaussianBlur in="SourceGraphic" stdDeviation="${isActive ? 5 : 3}" result="blur"/>
           <feMerge>
             <feMergeNode in="blur"/>
             <feMergeNode in="SourceGraphic"/>
@@ -25,17 +28,15 @@ export function createPinIcon(pin) {
           <stop offset="100%" style="stop-color:${color};stop-opacity:0.7" />
         </linearGradient>
         <filter id="shadow-${pin._id}" x="-30%" y="-20%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="${color}" flood-opacity="0.4"/>
+          <feDropShadow dx="0" dy="${isActive ? 6 : 4}" stdDeviation="${isActive ? 6 : 4}" flood-color="${color}" flood-opacity="0.55"/>
         </filter>
       </defs>
-      <!-- Pin body -->
+      ${isActive ? `<circle cx="24" cy="21" r="20" fill="${color}22" stroke="${color}" stroke-width="2"/>` : ''}
       <path d="M24 2C13.5 2 5 10.5 5 21c0 14 19 38 19 38S43 35 43 21C43 10.5 34.5 2 24 2z"
             fill="url(#grad-${pin._id})" filter="url(#shadow-${pin._id})"
-            stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>
-      <!-- Inner circle -->
-      <circle cx="24" cy="20" r="11" fill="rgba(0,0,0,0.25)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
-      <!-- Initial letter -->
-      <text x="24" y="24.5" text-anchor="middle" font-size="13" fill="white"
+            stroke="rgba(255,255,255,0.7)" stroke-width="${isActive ? 2 : 1.5}"/>
+      <circle cx="24" cy="20" r="${11 * innerScale}" fill="rgba(0,0,0,0.25)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <text x="24" y="24.5" text-anchor="middle" font-size="${isActive ? 15 : 13}" fill="white"
             font-family="Inter,system-ui,sans-serif" font-weight="800">${initial}</text>
       ${hasPhotos ? `
         <circle cx="38" cy="10" r="8" fill="#06b6d4" stroke="#0e1117" stroke-width="2"/>
@@ -51,9 +52,9 @@ export function createPinIcon(pin) {
   return L.divIcon({
     html: svg,
     className: 'pin-marker',
-    iconSize:   [48, 62],
-    iconAnchor: [24, 62],
-    popupAnchor:[0, -62],
+    iconSize: [size, height],
+    iconAnchor: [size / 2, height],
+    popupAnchor:[0, -height],
   });
 }
 

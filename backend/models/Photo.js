@@ -6,6 +6,8 @@ const locationSchema = new mongoose.Schema({
 }, { _id: false });
 
 const photoSchema = new mongoose.Schema({
+  ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+
   // ── File Info ──────────────────────────────────────────────────────────────
   filename:     { type: String, required: true },
   originalName: { type: String, required: true },
@@ -65,10 +67,10 @@ const photoSchema = new mongoose.Schema({
 
 // Geospatial index for map queries
 photoSchema.index({ location: '2dsphere' });
-photoSchema.index({ createdAt: -1 });
-photoSchema.index({ tags: 1 });
-photoSchema.index({ categories: 1 });
-photoSchema.index({ locationSource: 1 });
+photoSchema.index({ ownerId: 1, createdAt: -1 });
+photoSchema.index({ ownerId: 1, tags: 1 });
+photoSchema.index({ ownerId: 1, categories: 1 });
+photoSchema.index({ ownerId: 1, locationSource: 1 });
 
 // Virtual: lat/lng shorthand
 photoSchema.virtual('lat').get(function () {

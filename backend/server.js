@@ -10,6 +10,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 
+const authRoutes = require('./routes/auth');
 const photoRoutes = require('./routes/photos');
 const statsRoutes = require('./routes/stats');
 const pinRoutes   = require('./routes/pins');
@@ -89,6 +90,7 @@ mongoose.connection.on('disconnected', () => console.warn('⚠️  MongoDB disco
 mongoose.connection.on('reconnected', () => console.log('🔄  MongoDB reconnected'));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
+app.use('/api/auth', authRoutes);
 app.use('/api/photos', photoRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/pins', pinRoutes);
