@@ -5,6 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import { photosApi, pinsApi } from '../services/api';
 import { useUpload } from '../hooks/usePhotos';
+import { ProtectedImage } from './ProtectedMedia';
 
 const ACCEPTED = {
   'image/*': ['.jpg','.jpeg','.png','.heic','.heif','.webp','.tiff'],
