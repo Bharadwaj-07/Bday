@@ -4,6 +4,7 @@ import { X, MapPin, MapPinOff, Trash2, Edit2, Check, Camera, Calendar, Ruler, Pe
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { photosApi } from '../services/api';
+import { ProtectedImage, ProtectedVideo } from './ProtectedMedia';
 import { usePhotoDetail } from '../hooks/usePhotos';
 
 function ExifRow({ label, value }) {
@@ -84,13 +85,13 @@ export default function PhotoDetail({ id, onClose, onSetPin, onDeleted, onOpenEd
               {/* Image */}
               <div className="relative w-full aspect-square bg-surface-hover">
                 {photo.mediaType === 'video' ? (
-                  <video
+                  <ProtectedVideo
                     src={photosApi.fileUrl(photo._id)}
                     controls
                     className="w-full h-full object-contain"
                   />
                 ) : (
-                  <img
+                  <ProtectedImage
                     src={photosApi.fileUrl(photo._id)}
                     alt={photo.title || photo.originalName}
                     className="w-full h-full object-contain"

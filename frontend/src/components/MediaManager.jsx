@@ -316,7 +316,7 @@ export default function MediaManager({ photos, pins, onRefreshPhotos, onRefreshP
                     <Video size={24} className="text-slate-500" />
                   </div>
                 ) : (
-                  <img
+                  <ProtectedImage
                     src={photosApi.fileUrl(photo._id)}
                     alt={photo.title || photo.originalName}
                     className="w-full h-full object-cover"

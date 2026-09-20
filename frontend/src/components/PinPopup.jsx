@@ -145,20 +145,20 @@ export default function PinPopup({ pin, onClose }) {
                 <>
                   {/* Background blur */}
                   <div className="absolute inset-0 scale-125">
-                    <img src={photoUrl} alt="" className="w-full h-full object-cover blur-3xl opacity-30" />
+                    <ProtectedImage src={photoUrl} alt="" className="w-full h-full object-cover blur-3xl opacity-30" />
                   </div>
                   {/* Current photo */}
                   <AnimatePresence mode="wait">
-                    <motion.img
+                    <motion.div
                       key={currentPhoto._id}
-                      src={photoUrl}
-                      alt={currentPhoto.title || currentPhoto.originalName}
-                      className="relative w-full h-full object-cover"
                       initial={{ opacity: 0, scale: 1.05 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
                       transition={{ duration: 0.5 }}
-                    />
+                      className="relative w-full h-full"
+                    >
+                      <ProtectedImage src={photoUrl} alt={currentPhoto.title || currentPhoto.originalName} className="w-full h-full object-cover" />
+                    </motion.div>
                   </AnimatePresence>
                   {/* Photo navigation */}
                   {photos.length > 1 && (
@@ -309,7 +309,7 @@ export default function PinPopup({ pin, onClose }) {
                       style={{
                         ringColor: i === currentPhotoIdx ? `${pinColor}50` : 'transparent',
                       }}>
-                      <img src={photosApi.fileUrl(p._id)} alt=""
+                      <ProtectedImage src={photosApi.fileUrl(p._id)} alt=""
                         className="w-full h-full object-cover" loading="lazy" />
                     </button>
                   ))}

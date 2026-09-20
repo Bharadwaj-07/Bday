@@ -1,5 +1,6 @@
 import { MapPin, MapPinOff, Video, PenLine } from 'lucide-react';
 import { photosApi } from '../services/api';
+import { ProtectedImage } from './ProtectedMedia';
 import { format } from 'date-fns';
 
 const SOURCE_STYLES = {
@@ -23,7 +24,7 @@ export default function PhotoCard({ photo, onClick, onSetPin, onOpenEdit }) {
           <div className="w-full h-full flex items-center justify-center text-2xl bg-slate-800">🎬</div>
         ) : (
           <>
-            <img
+            <ProtectedImage
               src={photosApi.fileUrl(photo._id)}
               alt={photo.title || photo.originalName}
               className="w-full h-full object-cover"

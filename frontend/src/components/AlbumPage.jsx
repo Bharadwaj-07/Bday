@@ -7,6 +7,7 @@ import {
   Repeat, Shuffle,
 } from 'lucide-react';
 import { photosApi, musicApi } from '../services/api';
+import { ProtectedImage, ProtectedVideo } from './ProtectedMedia';
 
 const normalizeId = (value) => value && typeof value === 'object' && value.toString ? value.toString() : String(value ?? '');
 
@@ -411,7 +412,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin, autoAd
               {/* Background blur of current media */}
               <div className="absolute inset-0 overflow-hidden">
                 {!isVideo && mediaUrl && (
-                  <img src={mediaUrl} alt="" className="w-full h-full object-cover blur-3xl opacity-15 scale-125" />
+                  <ProtectedImage src={mediaUrl} alt="" className="w-full h-full object-cover blur-3xl opacity-15 scale-125" />
                 )}
                 <div className="absolute inset-0 bg-[#07080c]/70" />
               </div>
@@ -427,7 +428,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin, autoAd
                   transition={{ duration: 0.6, ease: 'easeInOut' }}
                 >
                   {isVideo ? (
-                    <video
+                    <ProtectedVideo
                       ref={videoRef}
                       src={mediaUrl}
                       className="max-w-full max-h-full rounded-2xl shadow-2xl album-media"
@@ -437,7 +438,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin, autoAd
                       style={{ maxHeight: 'calc(100vh - 200px)' }}
                     />
                   ) : (
-                    <img
+                    <ProtectedImage
                       src={mediaUrl}
                       alt={currentMedia?.title || currentMedia?.originalName || ''}
                       className="max-w-full max-h-full rounded-2xl shadow-2xl album-media object-contain"
@@ -525,7 +526,7 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin, autoAd
                         <Play size={14} className="text-white/60" />
                       </div>
                     ) : (
-                      <img src={photosApi.fileUrl(item._id)} alt=""
+                      <ProtectedImage src={photosApi.fileUrl(item._id)} alt=""
                         className="w-full h-full object-cover" loading="lazy" />
                     )}
                   </button>

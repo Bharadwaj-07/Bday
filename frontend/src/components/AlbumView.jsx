@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { photosApi } from '../services/api';
 import { useLocationPhotos } from '../hooks/usePhotos';
+import { ProtectedImage, ProtectedVideo } from './ProtectedMedia';
 
 function exifDate(str) {
   if (!str) return null;
@@ -148,7 +149,7 @@ export default function AlbumView({ location, allPins = [], onClose, onOpenEdit,
               {/* Background blur layer */}
               <div className="absolute inset-0 scale-110">
                 {heroUrl && (
-                  <img src={heroUrl} alt="" className="w-full h-full object-cover blur-3xl opacity-40" draggable={false} />
+                  <ProtectedImage src={heroUrl} alt="" className="w-full h-full object-cover blur-3xl opacity-40" draggable={false} />
                 )}
               </div>
               {/* Hero image */}
@@ -160,7 +161,7 @@ export default function AlbumView({ location, allPins = [], onClose, onOpenEdit,
                 transition={{ duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94] }}
               >
                 {heroUrl && (
-                  <img
+                  <ProtectedImage
                     src={heroUrl}
                     alt={heroPhoto?.title || heroPhoto?.originalName}
                     className="max-h-full max-w-[90%] object-contain drop-shadow-2xl rounded-lg"
@@ -493,12 +494,12 @@ function Lightbox({ photo, index, total, onClose, onPrev, onNext, onOpenEdit, al
             className="max-w-[calc(100%-120px)] max-h-full px-10 py-4 flex items-center justify-center"
           >
             {isVideo ? (
-              <video src={fileUrl} controls autoPlay muted
+              <ProtectedVideo src={fileUrl} controls autoPlay muted
                 className="max-h-[78vh] max-w-full object-contain rounded-2xl shadow-2xl" />
             ) : imgError ? (
               <div className="text-white/20 text-sm">Failed to load image.</div>
             ) : (
-              <img src={fileUrl} alt={photo.title || photo.originalName}
+              <ProtectedImage src={fileUrl} alt={photo.title || photo.originalName}
                 onError={() => setImgError(true)}
                 className="max-h-[78vh] max-w-full object-contain rounded-lg shadow-2xl shadow-black/50 select-none"
                 draggable={false}
@@ -554,7 +555,7 @@ function Lightbox({ photo, index, total, onClose, onPrev, onNext, onOpenEdit, al
                                ? 'border-indigo-400 ring-2 ring-indigo-400/30 scale-110'
                                : 'border-transparent opacity-50 hover:opacity-80'}`}
                 >
-                  <img
+                  <ProtectedImage
                     src={photosApi.fileUrl(p._id)}
                     alt=""
                     className="w-full h-full object-cover"
