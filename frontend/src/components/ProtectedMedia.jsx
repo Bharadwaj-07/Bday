@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useState } from 'react';
 import { ImageIcon } from 'lucide-react';
-import { getStoredToken } from '../services/api';
+import { getStoredUserId } from '../services/api';
 
 function isProtectedApiUrl(url) {
   return !!url && typeof url === 'string' && url.includes('/api/');
@@ -9,7 +9,11 @@ function isProtectedApiUrl(url) {
 export async function fetchProtectedMediaUrl(url, { signal } = {}) {
   if (!url || !isProtectedApiUrl(url)) return url;
 
-  const res = await fetch(url, { signal });
+  const userId = getStoredUserId();
+  const res = await fetch(url, {
+    signal,
+    headers: userId ? { 'X-User-Id': userId } : {},
+  });
 
   if (!res.ok) throw new Error(`Media fetch failed: ${res.status}`);
   const blob = await res.blob();
@@ -127,7 +131,10 @@ export function loadProtectedAudioSource(audioElement, url) {
     return;
   }
 
-  fetch(url)
+  const userId = getStoredUserId();
+  fetch(url, {
+    headers: userId ? { 'X-User-Id': userId } : {},
+  })
     .then((res) => {
       if (!res.ok) throw new Error(`Audio fetch failed: ${res.status}`);
       return res.blob();
