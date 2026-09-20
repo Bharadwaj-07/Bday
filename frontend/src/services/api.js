@@ -3,6 +3,7 @@ import axios from 'axios';
 const DEFAULT_LOCAL_BACKEND = 'http://localhost:5000';
 const AUTH_TOKEN_KEY = 'photomap_auth_token';
 const USER_ID_KEY = 'photomap_user_id';
+const USER_KEY = 'photomap_user';
 
 function resolveApiBase() {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -28,6 +29,31 @@ export function setStoredToken(token) {
 
 export function clearStoredToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+export function getStoredUser() {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUser(user) {
+  if (user) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (user._id) localStorage.setItem(USER_ID_KEY, String(user._id));
+    else localStorage.removeItem(USER_ID_KEY);
+  } else {
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(USER_ID_KEY);
+  }
+}
+
+export function clearStoredUser() {
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(USER_ID_KEY);
 }
 
 export function getStoredUserId() {

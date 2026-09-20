@@ -1,25 +1,10 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const axios = require('axios');
 const User = require('../models/User');
 
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'photomap-dev-secret-change-me';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-
-function signToken(user) {
-  return jwt.sign(
-    {
-      sub: user._id.toString(),
-      email: user.email,
-      name: user.name,
-      authStatus: user.authStatus,
-    },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-}
 
 async function verifyGoogleToken(token) {
   if (!GOOGLE_CLIENT_ID) {
@@ -85,10 +70,7 @@ router.post('/google', async (req, res) => {
       await user.save();
     }
 
-    const token = signToken(user);
-
     return res.json({
-      token,
       user: {
         _id: user._id,
         email: user.email,
@@ -107,12 +89,10 @@ router.post('/google', async (req, res) => {
 
 router.get('/me', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    if (!token) return res.status(401).json({ error: 'Missing token' });
+    const userId = String(req.headers['x-user-id'] || '').trim();
+    if (!userId) return res.status(401).json({ error: 'Missing user id' });
 
-    const payload = jwt.verify(token, JWT_SECRET);
-    const user = await User.findById(payload.sub).lean();
+    const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     return res.json({ user: {
@@ -125,7 +105,7 @@ router.get('/me', async (req, res) => {
       profileCompleted: user.profileCompleted,
     }});
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ error: 'Invalid user id' });
   }
 });
 

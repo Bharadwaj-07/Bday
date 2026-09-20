@@ -8,7 +8,7 @@ import MediaManager from './components/MediaManager';
 import AlbumPage from './components/AlbumPage';
 import { usePins, useMusic, usePhotos } from './hooks/usePhotos';
 import { useSocket } from './hooks/useSocket';
-import { pinsApi, musicApi, authApi, getStoredToken, setStoredToken, clearStoredToken, getStoredUserId, setStoredUserId, clearStoredUserId } from './services/api';
+import { pinsApi, musicApi, authApi, getStoredUser, setStoredUser, clearStoredUser, getStoredUserId, setStoredUserId, clearStoredUserId } from './services/api';
 import { fetchProtectedMediaUrl } from './components/ProtectedMedia';
 import toast from 'react-hot-toast';
 
@@ -48,9 +48,12 @@ function GoogleAuthScreen({ onAuthenticated }) {
           try {
             setIsLoading(true);
             const { data } = await authApi.googleLogin(response.credential);
-            setStoredToken(data.token);
-            setStoredUserId(data.user?._id);
-            onAuthenticated(data.user);
+            const user = data.user || null;
+            if (user) {
+              setStoredUser(user);
+              setStoredUserId(user._id);
+            }
+            onAuthenticated(user);
           } catch (err) {
             setAuthError(err.message || 'Google login failed.');
             setIsLoading(false);
@@ -124,26 +127,24 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
 
   const restoreSession = useCallback(() => {
-    const userId = getStoredUserId();
-    const token = getStoredToken();
+    const user = getStoredUser();
 
-    if (!userId || !token) {
-      clearStoredToken();
-      clearStoredUserId();
+    if (!user || !user._id) {
+      clearStoredUser();
       setAuthUser(null);
       setAuthReady(true);
       return;
     }
 
-    setAuthUser({ _id: userId });
+    setStoredUserId(user._id);
+    setAuthUser(user);
     setAuthReady(true);
   }, []);
 
   useEffect(() => {
     restoreSession();
     const onLogout = () => {
-      clearStoredToken();
-      clearStoredUserId();
+      clearStoredUser();
       setAuthUser(null);
       setAuthReady(true);
     };
@@ -160,8 +161,7 @@ export default function App() {
   }
 
   return <AuthenticatedApp user={authUser} onLogout={() => {
-    clearStoredToken();
-    clearStoredUserId();
+    clearStoredUser();
     setAuthUser(null);
   }} />;
 }
