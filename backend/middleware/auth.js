@@ -1,13 +1,16 @@
-const mongoose = require('mongoose');
-
-const PUBLIC_OWNER_ID = new mongoose.Types.ObjectId('000000000000000000000000');
-
 function requireAuth(req, res, next) {
-  req.user = req.user || {
-    sub: PUBLIC_OWNER_ID.toString(),
-    email: 'public@local',
-    name: 'Public User',
+  const userId = String(req.headers['x-user-id'] || '').trim();
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  req.user = {
+    sub: userId,
+    email: 'session-user',
+    name: 'Logged in user',
   };
+
   next();
 }
 

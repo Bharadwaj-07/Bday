@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const DEFAULT_LOCAL_BACKEND = 'http://localhost:5000';
 const AUTH_TOKEN_KEY = 'photomap_auth_token';
+const USER_ID_KEY = 'photomap_user_id';
 
 function resolveApiBase() {
   if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
@@ -29,6 +30,19 @@ export function clearStoredToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
+export function getStoredUserId() {
+  return localStorage.getItem(USER_ID_KEY) || '';
+}
+
+export function setStoredUserId(userId) {
+  if (userId) localStorage.setItem(USER_ID_KEY, String(userId));
+  else localStorage.removeItem(USER_ID_KEY);
+}
+
+export function clearStoredUserId() {
+  localStorage.removeItem(USER_ID_KEY);
+}
+
 const api = axios.create({
   baseURL: `${BASE}/api`,
   timeout: 120000,
@@ -43,7 +57,14 @@ if (!import.meta.env.VITE_API_URL) {
   }
 }
 
-api.interceptors.request.use((config) => config);
+api.interceptors.request.use((config) => {
+  const userId = getStoredUserId();
+  if (userId) {
+    config.headers = config.headers || {};
+    config.headers['X-User-Id'] = userId;
+  }
+  return config;
+});
 
 api.interceptors.response.use(
   res => res,
@@ -64,6 +85,9 @@ async function uploadSingleFile(url, fieldName, file) {
   const res = await fetch(url, {
     method: 'POST',
     body: form,
+    headers: {
+      'X-User-Id': getStoredUserId(),
+    },
   });
 
   const json = await res.json();

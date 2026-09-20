@@ -8,7 +8,7 @@ import MediaManager from './components/MediaManager';
 import AlbumPage from './components/AlbumPage';
 import { usePins, useMusic, usePhotos } from './hooks/usePhotos';
 import { useSocket } from './hooks/useSocket';
-import { pinsApi, musicApi, authApi, getStoredToken, setStoredToken, clearStoredToken } from './services/api';
+import { pinsApi, musicApi, authApi, getStoredToken, setStoredToken, clearStoredToken, getStoredUserId, setStoredUserId, clearStoredUserId } from './services/api';
 import { fetchProtectedMediaUrl } from './components/ProtectedMedia';
 import toast from 'react-hot-toast';
 
@@ -49,6 +49,7 @@ function GoogleAuthScreen({ onAuthenticated }) {
             setIsLoading(true);
             const { data } = await authApi.googleLogin(response.credential);
             setStoredToken(data.token);
+            setStoredUserId(data.user?._id);
             onAuthenticated(data.user);
           } catch (err) {
             setAuthError(err.message || 'Google login failed.');
@@ -123,11 +124,18 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
 
   const restoreSession = useCallback(() => {
+    const userId = getStoredUserId();
     const token = getStoredToken();
-    if (token) {
+
+    if (!userId || !token) {
       clearStoredToken();
+      clearStoredUserId();
+      setAuthUser(null);
+      setAuthReady(true);
+      return;
     }
-    setAuthUser(null);
+
+    setAuthUser({ _id: userId });
     setAuthReady(true);
   }, []);
 
@@ -135,6 +143,7 @@ export default function App() {
     restoreSession();
     const onLogout = () => {
       clearStoredToken();
+      clearStoredUserId();
       setAuthUser(null);
       setAuthReady(true);
     };
@@ -152,6 +161,7 @@ export default function App() {
 
   return <AuthenticatedApp user={authUser} onLogout={() => {
     clearStoredToken();
+    clearStoredUserId();
     setAuthUser(null);
   }} />;
 }
