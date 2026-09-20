@@ -1,7 +1,20 @@
 import axios from 'axios';
 
-const BASE = (import.meta.env.VITE_API_URL || window.location.origin || '').replace(/\/$/, '');
+const DEFAULT_LOCAL_BACKEND = 'http://localhost:5000';
 const AUTH_TOKEN_KEY = 'photomap_auth_token';
+
+function resolveApiBase() {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
+    return DEFAULT_LOCAL_BACKEND;
+  }
+
+  return window.location.origin || '';
+}
+
+const BASE = resolveApiBase().replace(/\/$/, '');
 
 export function getStoredToken() {
   return localStorage.getItem(AUTH_TOKEN_KEY) || '';
@@ -21,8 +34,13 @@ const api = axios.create({
   timeout: 120000,
 });
 
-if (!import.meta.env.VITE_API_URL && BASE === window.location.origin) {
-  console.info('PhotoMap is using the current Netlify/Vite origin as the API base. Set VITE_API_URL for a separate backend host.');
+if (!import.meta.env.VITE_API_URL) {
+  const host = window.location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
+    console.info('PhotoMap is using the local backend at http://localhost:5000. Set VITE_API_URL to override this in production.');
+  } else {
+    console.info('PhotoMap is using the current origin as the API base. Set VITE_API_URL for a separate backend host.');
+  }
 }
 
 api.interceptors.request.use((config) => {
