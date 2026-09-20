@@ -31,7 +31,7 @@ export const ProtectedImage = forwardRef(function ProtectedImage({ src, alt = ''
         setResolvedSrc(objectUrl);
       } catch {
         if (!cancelled) {
-          setResolvedSrc(src);
+          setResolvedSrc('');
         }
       }
     })();
@@ -70,7 +70,7 @@ export const ProtectedVideo = forwardRef(function ProtectedVideo({ src, classNam
         objectUrl = URL.createObjectURL(blob);
         setResolvedSrc(objectUrl);
       } catch {
-        if (!cancelled) setResolvedSrc(src);
+        if (!cancelled) setResolvedSrc('');
       }
     })();
 
