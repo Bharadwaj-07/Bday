@@ -53,7 +53,16 @@ api.interceptors.response.use(
 async function uploadSingleFile(url, fieldName, file) {
   const form = new FormData();
   form.append(fieldName, file);
-  const res = await fetch(url, { method: 'POST', body: form });
+
+  const token = getStoredToken();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const res = await fetch(url, {
+    method: 'POST',
+    body: form,
+    headers,
+  });
+
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || `Upload failed (${res.status})`);
   return json;
