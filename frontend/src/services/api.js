@@ -43,22 +43,11 @@ if (!import.meta.env.VITE_API_URL) {
   }
 }
 
-api.interceptors.request.use((config) => {
-  const token = getStoredToken();
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+api.interceptors.request.use((config) => config);
 
 api.interceptors.response.use(
   res => res,
   error => {
-    if (error.response?.status === 401) {
-      clearStoredToken();
-      window.dispatchEvent(new CustomEvent('photomap:logout'));
-    }
     const message = error.response?.data?.error || error.message || 'Unknown error';
     return Promise.reject(new Error(message));
   }
@@ -72,13 +61,9 @@ async function uploadSingleFile(url, fieldName, file) {
   const form = new FormData();
   form.append(fieldName, file);
 
-  const token = getStoredToken();
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
   const res = await fetch(url, {
     method: 'POST',
     body: form,
-    headers,
   });
 
   const json = await res.json();

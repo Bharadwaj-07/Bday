@@ -122,22 +122,13 @@ export default function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
 
-  const restoreSession = useCallback(async () => {
+  const restoreSession = useCallback(() => {
     const token = getStoredToken();
-    if (!token) {
-      setAuthReady(true);
-      return;
-    }
-
-    try {
-      const { data } = await authApi.getMe();
-      setAuthUser(data.user || null);
-    } catch (err) {
+    if (token) {
       clearStoredToken();
-      setAuthUser(null);
-    } finally {
-      setAuthReady(true);
     }
+    setAuthUser(null);
+    setAuthReady(true);
   }, []);
 
   useEffect(() => {

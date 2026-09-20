@@ -9,11 +9,7 @@ function isProtectedApiUrl(url) {
 export async function fetchProtectedMediaUrl(url, { signal } = {}) {
   if (!url || !isProtectedApiUrl(url)) return url;
 
-  const token = getStoredToken();
-  const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    signal,
-  });
+  const res = await fetch(url, { signal });
 
   if (!res.ok) throw new Error(`Media fetch failed: ${res.status}`);
   const blob = await res.blob();
@@ -131,10 +127,7 @@ export function loadProtectedAudioSource(audioElement, url) {
     return;
   }
 
-  const token = getStoredToken();
-  fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
+  fetch(url)
     .then((res) => {
       if (!res.ok) throw new Error(`Audio fetch failed: ${res.status}`);
       return res.blob();
