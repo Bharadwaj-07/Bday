@@ -45,7 +45,7 @@ export default function AlbumView({ location, allPins = [], onClose, onOpenEdit,
 
   // Hero photo = first photo
   const heroPhoto = photos[0] || null;
-  const heroUrl = heroPhoto ? `/api/photos/${heroPhoto._id}/file` : null;
+  const heroUrl = heroPhoto ? photosApi.fileUrl(heroPhoto._id) : null;
 
   // Keyboard: Escape closes lightbox or album
   useEffect(() => {
@@ -278,7 +278,7 @@ export default function AlbumView({ location, allPins = [], onClose, onOpenEdit,
 function PhotoGridItem({ photo, idx, isTall, isWide, onClick, onOpenEdit }) {
   const [imgError, setImgError] = useState(false);
   const [hover, setHover] = useState(false);
-  const fileUrl = `/api/photos/${photo._id}/file`;
+  const fileUrl = photosApi.fileUrl(photo._id);
   const isVideo = photo.mimeType?.startsWith('video/');
   const hasSongs = photo.songs?.length > 0;
 
@@ -382,7 +382,7 @@ function Lightbox({ photo, index, total, onClose, onPrev, onNext, onOpenEdit, al
   const thumbsRef = useRef(null);
 
   const isVideo = photo.mimeType?.startsWith('video/');
-  const fileUrl = `/api/photos/${photo._id}/file`;
+  const fileUrl = photosApi.fileUrl(photo._id);
 
   // Auto slideshow
   useEffect(() => {
@@ -555,7 +555,7 @@ function Lightbox({ photo, index, total, onClose, onPrev, onNext, onOpenEdit, al
                                : 'border-transparent opacity-50 hover:opacity-80'}`}
                 >
                   <img
-                    src={`/api/photos/${p._id}/file`}
+                    src={photosApi.fileUrl(p._id)}
                     alt=""
                     className="w-full h-full object-cover"
                     loading="lazy"
@@ -591,7 +591,7 @@ function AlbumMusicPlayer({ songs, songOwnerMap }) {
 
   const current = queue[idx] || null;
   const photoId = current ? songOwnerMap[current._id] : null;
-  const src = current && photoId ? `/api/photos/${photoId}/songs/${current._id}/file` : null;
+  const src = current && photoId ? `${photosApi.fileUrl(photoId).replace(/\/api\/photos\/.+?\/file$/, '')}/api/photos/${photoId}/songs/${current._id}/file` : null;
 
   useEffect(() => {
     const el = audioRef.current;
