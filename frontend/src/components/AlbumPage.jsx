@@ -140,13 +140,36 @@ export default function AlbumPage({ pin, allPins, onClose, onNavigatePin, autoAd
 
   // ── Audio playback ────────────────────────────────────────────────────────
   useEffect(() => {
+    let active = true;
     const audio = audioRef.current;
-    if (!audio || !musicItems.length) return;
-    audio.src = musicApi.fileUrl(musicItems[currentTrack]?._id);
-    audio.muted = audioMuted;
-    audio.loop = true;
-    if (audioPlaying) audio.play().catch(() => {});
-  }, [currentTrack, musicItems]);
+    if (!audio || !musicItems.length) return undefined;
+
+    const song = musicItems[currentTrack];
+    if (!song?._id) return undefined;
+
+    fetchProtectedMediaUrl(musicApi.fileUrl(song._id)).then((url) => {
+      if (!active || !audioRef.current) return;
+      const previous = audio.dataset.protectedAudioUrl;
+      if (previous && previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+      audio.dataset.protectedAudioUrl = url;
+      audio.src = url;
+      audio.muted = audioMuted;
+      audio.loop = true;
+      if (audioPlaying) audio.play().catch(() => {});
+    }).catch(() => {
+      if (active && audioRef.current) {
+        audioRef.current.src = '';
+        audioRef.current.pause();
+      }
+    });
+
+    return () => {
+      active = false;
+      const previous = audio.dataset.protectedAudioUrl;
+      if (previous && previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+      delete audio.dataset.protectedAudioUrl;
+    };
+  }, [currentTrack, musicItems, audioMuted, audioPlaying]);
 
   useEffect(() => {
     const audio = audioRef.current;

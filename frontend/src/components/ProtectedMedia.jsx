@@ -1,9 +1,23 @@
 import { forwardRef, useEffect, useState } from 'react';
-import { ImageIcon, PlayCircle } from 'lucide-react';
+import { ImageIcon } from 'lucide-react';
 import { getStoredToken } from '../services/api';
 
 function isProtectedApiUrl(url) {
   return !!url && typeof url === 'string' && url.includes('/api/');
+}
+
+export async function fetchProtectedMediaUrl(url, { signal } = {}) {
+  if (!url || !isProtectedApiUrl(url)) return url;
+
+  const token = getStoredToken();
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    signal,
+  });
+
+  if (!res.ok) throw new Error(`Media fetch failed: ${res.status}`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 function MediaFallback({ label, className, style }) {
@@ -30,21 +44,20 @@ export const ProtectedImage = forwardRef(function ProtectedImage({ src, alt = ''
 
     if (!src || !isProtectedApiUrl(src)) {
       setResolvedSrc(src || '');
+      setHasError(false);
       return undefined;
     }
 
-    const token = getStoredToken();
-
     (async () => {
       try {
-        const res = await fetch(src, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) throw new Error(`Media fetch failed: ${res.status}`);
-        const blob = await res.blob();
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setResolvedSrc(objectUrl);
+        const nextUrl = await fetchProtectedMediaUrl(src);
+        if (cancelled) {
+          if (nextUrl && nextUrl.startsWith('blob:')) URL.revokeObjectURL(nextUrl);
+          return;
+        }
+        objectUrl = nextUrl;
+        setResolvedSrc(nextUrl);
+        setHasError(false);
       } catch {
         if (!cancelled) {
           setResolvedSrc('');
@@ -76,21 +89,20 @@ export const ProtectedVideo = forwardRef(function ProtectedVideo({ src, classNam
 
     if (!src || !isProtectedApiUrl(src)) {
       setResolvedSrc(src || '');
+      setHasError(false);
       return undefined;
     }
 
-    const token = getStoredToken();
-
     (async () => {
       try {
-        const res = await fetch(src, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!res.ok) throw new Error(`Video fetch failed: ${res.status}`);
-        const blob = await res.blob();
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setResolvedSrc(objectUrl);
+        const nextUrl = await fetchProtectedMediaUrl(src);
+        if (cancelled) {
+          if (nextUrl && nextUrl.startsWith('blob:')) URL.revokeObjectURL(nextUrl);
+          return;
+        }
+        objectUrl = nextUrl;
+        setResolvedSrc(nextUrl);
+        setHasError(false);
       } catch {
         if (!cancelled) {
           setResolvedSrc('');
@@ -111,3 +123,30 @@ export const ProtectedVideo = forwardRef(function ProtectedVideo({ src, classNam
 
   return <video ref={ref} src={resolvedSrc} className={className} style={style} {...props} />;
 });
+
+export function loadProtectedAudioSource(audioElement, url) {
+  if (!audioElement) return;
+  if (!url || !isProtectedApiUrl(url)) {
+    audioElement.src = url || '';
+    return;
+  }
+
+  const token = getStoredToken();
+  fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`Audio fetch failed: ${res.status}`);
+      return res.blob();
+    })
+    .then((blob) => {
+      const objectUrl = URL.createObjectURL(blob);
+      const previous = audioElement.dataset.protectedAudioUrl;
+      if (previous && previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+      audioElement.dataset.protectedAudioUrl = objectUrl;
+      audioElement.src = objectUrl;
+    })
+    .catch(() => {
+      audioElement.src = '';
+    });
+}

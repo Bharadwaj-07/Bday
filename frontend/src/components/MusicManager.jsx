@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Music, Upload, Trash2, Link2, Loader2, Play, Pause, X, Unlink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { musicApi, pinsApi } from '../services/api';
+import { fetchProtectedMediaUrl } from './ProtectedMedia';
 import { useMusicUpload } from '../hooks/usePhotos';
 
 export default function MusicManager({ music, pins, onRefreshMusic, onRefreshPins }) {
@@ -26,8 +27,16 @@ export default function MusicManager({ music, pins, onRefreshMusic, onRefreshPin
       setPlayingId(null);
     } else {
       if (audioRef.current) {
-        audioRef.current.src = musicApi.fileUrl(id);
-        audioRef.current.play().catch(() => {});
+        const audio = audioRef.current;
+        fetchProtectedMediaUrl(musicApi.fileUrl(id)).then((url) => {
+          const previous = audio.dataset.protectedAudioUrl;
+          if (previous && previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+          audio.dataset.protectedAudioUrl = url;
+          audio.src = url;
+          audio.play().catch(() => {});
+        }).catch(() => {
+          audio.src = '';
+        });
       }
       setPlayingId(id);
     }

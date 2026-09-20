@@ -307,7 +307,7 @@ function PhotoGridItem({ photo, idx, isTall, isWide, onClick, onOpenEdit }) {
           <ImageIcon size={32} />
         </div>
       ) : (
-        <img
+        <ProtectedImage
           src={fileUrl}
           alt={photo.title || photo.originalName}
           className={`w-full h-full object-cover transition-transform duration-700 ease-out

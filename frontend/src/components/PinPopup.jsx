@@ -5,6 +5,7 @@ import {
   Play, Pause, SkipForward, Volume2, VolumeX, Heart, Sparkles
 } from 'lucide-react';
 import { photosApi, musicApi } from '../services/api';
+import { fetchProtectedMediaUrl } from './ProtectedMedia';
 
 export default function PinPopup({ pin, onClose }) {
   const [photos, setPhotos] = useState([]);
@@ -37,9 +38,32 @@ export default function PinPopup({ pin, onClose }) {
 
   // Auto-play music
   useEffect(() => {
-    if (!playing || !musicList.length || !audioRef.current) return;
-    audioRef.current.src = musicApi.fileUrl(musicList[currentMusicIdx]._id);
-    audioRef.current.play().catch(() => {});
+    let active = true;
+    const audio = audioRef.current;
+    if (!playing || !musicList.length || !audio) return undefined;
+
+    fetchProtectedMediaUrl(musicApi.fileUrl(musicList[currentMusicIdx]._id))
+      .then((url) => {
+        if (!active || !audioRef.current) return;
+        const previous = audio.dataset.protectedAudioUrl;
+        if (previous && previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+        audio.dataset.protectedAudioUrl = url;
+        audio.src = url;
+        audio.play().catch(() => {});
+      })
+      .catch(() => {
+        if (active && audioRef.current) {
+          audioRef.current.src = '';
+          audioRef.current.pause();
+        }
+      });
+
+    return () => {
+      active = false;
+      const previous = audio.dataset.protectedAudioUrl;
+      if (previous && previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+      delete audio.dataset.protectedAudioUrl;
+    };
   }, [currentMusicIdx, playing, musicList]);
 
   const toggleMusic = () => {

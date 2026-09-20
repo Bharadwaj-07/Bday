@@ -9,6 +9,7 @@ import AlbumPage from './components/AlbumPage';
 import { usePins, useMusic, usePhotos } from './hooks/usePhotos';
 import { useSocket } from './hooks/useSocket';
 import { pinsApi, musicApi, authApi, getStoredToken, setStoredToken, clearStoredToken } from './services/api';
+import { fetchProtectedMediaUrl } from './components/ProtectedMedia';
 import toast from 'react-hot-toast';
 
 const TABS = [
@@ -214,14 +215,43 @@ function AuthenticatedApp({ user, onLogout }) {
   }, [isPlaybackPlaying, playbackIndex, playbackPins.length]);
 
   useEffect(() => {
+    let active = true;
+    let objectUrl = '';
     const el = audioRef.current;
     if (!el || !isPlaybackPlaying || !playbackMusic.length) {
       el?.pause();
       return;
     }
+
     const song = playbackMusic[0];
-    el.src = musicApi.fileUrl(song._id);
-    el.play().catch(() => {});
+    const protectedUrl = musicApi.fileUrl(song._id);
+
+    fetchProtectedMediaUrl(protectedUrl)
+      .then((url) => {
+        if (!active || !el) return;
+        if (el.dataset.protectedAudioUrl && el.dataset.protectedAudioUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(el.dataset.protectedAudioUrl);
+        }
+        objectUrl = url;
+        el.dataset.protectedAudioUrl = url;
+        el.src = url;
+        el.play().catch(() => {});
+      })
+      .catch(() => {
+        if (active && el) {
+          el.src = '';
+          el.pause();
+        }
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl && objectUrl.startsWith('blob:')) URL.revokeObjectURL(objectUrl);
+      if (el?.dataset.protectedAudioUrl && el.dataset.protectedAudioUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(el.dataset.protectedAudioUrl);
+      }
+      delete el?.dataset.protectedAudioUrl;
+    };
   }, [isPlaybackPlaying, playbackMusic]);
 
   const goPrevPlayback = useCallback(() => {
